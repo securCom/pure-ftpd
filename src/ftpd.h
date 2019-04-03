@@ -809,4 +809,6 @@ Your platform has a very large PATH_MAX, we should not trust it.
 #include "bsd-realpath.h"
 #include "fakechroot.h"
 
+#define HAPROXY_BUFFER 109
+
 #endif

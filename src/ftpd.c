@@ -47,12 +47,60 @@
 # include <dmalloc.h>
 #endif
 
-int haproxy_parse(const char* str) {
+ssize_t haproxy_readline(int fd, void *buffer, size_t n) {
+    char *buf;
+    char ch;
+    size_t total_read = 0;
+    size_t res;
+    int end_loop = 0;
+
+    if (n <= 0 || buffer == NULL) {
+        return -1;
+    }
+
+    buf = buffer;
+    while ( !end_loop ) {
+        res = read(fd, &ch, 1);
+        switch(res) {
+            case -1:
+                if (errno == EINTR)
+                    continue;
+                return -1;
+                break;
+            case 0:
+                if (total_read == 0)
+                    return 0;
+                end_loop = 1;
+                break;
+        }
+
+        if (end_loop)
+            continue;
+
+        switch(ch) {
+            case '\r':
+                continue;
+                break;
+            case '\n':
+                end_loop = 1;
+                break;
+            default:
+                if (total_read < n-1) {
+                    total_read++;
+                    *buf++ = ch;
+                } 
+        }
+    }
+    *buf = '\0';
+    return total_read;
+}
+
+int haproxy_parse(const char* str, struct sockaddr_storage *client, struct sockaddr_storage *server) {
     // https://www.haproxy.org/download/1.8/doc/proxy-protocol.txt
 
     int  s, err = 0;
     char *saved_str = strdup(str);
-    char *rest = saved_str;
+    char *rest;
     char *token;
     const char delim[2] = " ";
 
@@ -61,16 +109,20 @@ int haproxy_parse(const char* str) {
     struct addrinfo hints_server, hints_client;
     struct addrinfo *res_server, *res_client;
 
-    memset(&hints_server, 0, sizeof hints_server);
-    memset(&hints_client, 0, sizeof hints_client);
+    memset(&hints_server, 0, sizeof(hints_server));
+    memset(&hints_client, 0, sizeof(hints_client));
     hints_server.ai_flags = AI_NUMERICHOST;
     hints_client.ai_flags = AI_NUMERICHOST;
+    memset(client_ip, 0, sizeof(client_ip));
+    memset(server_ip, 0, sizeof(server_ip));
+    memset(client_port, 0, sizeof(client_port));
+    memset(server_port, 0, sizeof(server_port));
 
     res_server = NULL;
     res_client = NULL;
 
     // token must be PROXY
-    token = strtok_r(rest, delim, &rest);
+    token = strtok_r(saved_str, delim, &rest);
     if (token == NULL) {
         err = -1;
         goto nope;
@@ -81,7 +133,7 @@ int haproxy_parse(const char* str) {
     }
    
     // must be TCP4 or TCP6, do not accept UNKNOWN 
-    token = strtok_r(rest, delim, &rest);
+    token = strtok_r(NULL, delim, &rest);
     if (token == NULL) {
         err = -1;
         goto nope;
@@ -98,63 +150,63 @@ int haproxy_parse(const char* str) {
     }
 
     // client ip address
-    token = strtok_r(rest, delim, &rest);
+    token = strtok_r(NULL, delim, &rest);
     if (token == NULL) {
         err = -1;
         goto nope;
     }
-    strncpy(client_ip, token, sizeof client_ip-(size_t) 1U);
+    strncpy(client_ip, token, sizeof(client_ip)-(size_t) 1U);
     
     // server ip address
-    token = strtok_r(rest, delim, &rest);
+    token = strtok_r(NULL, delim, &rest);
     if (token == NULL) {
         err = -1;
         goto nope;
     }
-    strncpy(server_ip, token, sizeof server_ip-(size_t) 1U);
+    strncpy(server_ip, token, sizeof(server_ip)-(size_t) 1U);
 
     // client source port
-    token = strtok_r(rest, delim, &rest);
+    token = strtok_r(NULL, delim, &rest);
     if (token == NULL) {
         err = -1;
         goto nope;
     }
-    strncpy(client_port, token, sizeof client_port-(size_t) 1U);
+    strncpy(client_port, token, sizeof(client_port)-(size_t) 1U);
 
     // server dest port
-    token = strtok_r(rest, delim, &rest);
+    token = strtok_r(NULL, delim, &rest);
     if (token == NULL) {
         err = -1;
         goto nope;
     }
-    strncpy(server_port, token, sizeof server_port-(size_t) 1U);
-    
-    token = strtok_r(rest, delim, &rest);
+    strncpy(server_port, token, sizeof(server_port)-(size_t) 1U);
+     
+    token = strtok_r(NULL, delim, &rest);
     if (token != NULL) {
-        err = -1;
-        goto nope;
-    }
-
-    s = getaddrinfo(client_ip, client_port, &hints_client, &res_client);
-    if (s) {
-        logfile(LOG_INFO, "converting client data failed");
         err = -1;
         goto nope;
     }
 
     s = getaddrinfo(server_ip, server_port, &hints_server, &res_server);
     if (s) {
-        logfile(LOG_INFO, "converting server data failed");
+        logfile(LOG_INFO, "haproxy converting server data failed");
         err = -1;
         goto nope;
     }
 
-    memcpy(&haproxy_server, res_server->ai_addr, res_server->ai_addrlen);
-    memcpy(&haproxy_client, res_client->ai_addr, res_client->ai_addrlen);
+    s = getaddrinfo(client_ip, client_port, &hints_client, &res_client);
+    if (s) {
+        logfile(LOG_INFO, "haproxy converting client data failed");
+        err = -1;
+        goto nope;
+    }
+
+    memcpy(server, res_server->ai_addr, res_server->ai_addrlen);
+    memcpy(client, res_client->ai_addr, res_client->ai_addrlen);
 
     nope:
     if (err) {
-        logfile(LOG_INFO, "ERROR INTCP PROXY");
+        logfile(LOG_INFO, "error parsing tcp proxy");
     }
     freeaddrinfo(res_client);
     freeaddrinfo(res_server);
@@ -2552,6 +2604,28 @@ void opendata(void)
                 error(421, MSG_ACCEPT_FAILED);
                 return;
             }
+            if (accept_tcpproxy) {
+                struct sockaddr_storage dataconn_server;
+                struct sockaddr_storage dataconn_client;
+                
+                logfile(LOG_INFO, "dataconn tcpproxy mode");
+                char haproxy_buffer[HAPROXY_BUFFER];
+                if (haproxy_readline(fd, haproxy_buffer, HAPROXY_BUFFER) < 0) {
+                    logfile(LOG_INFO, "data socket tcpproxy read failed");
+                    (void) close(datafd);
+                    datafd = -1;
+                    return; 
+                }
+                memset(&dataconn_server, 0, sizeof(dataconn_server));
+                memset(&dataconn_client, 0, sizeof(dataconn_client));
+                if (haproxy_parse(haproxy_buffer, &dataconn_client, &dataconn_server)) {
+                    logfile(LOG_INFO, "data socket tcpproxy parse failed");
+                    (void) close(datafd);
+                    datafd = -1;
+                    return; 
+                 }
+                 dataconn = dataconn_client;
+            } 
             if (STORAGE_FAMILY(dataconn) != AF_INET
                 && STORAGE_FAMILY(dataconn) != AF_INET6) {
                 (void) close(fd);
@@ -5008,9 +5082,13 @@ static void doit(void)
     if (trustedip != NULL && addrcmp(&ctrlconn, trustedip) != 0) {
        anon_only = 1;
     }
-    socksize = (socklen_t) sizeof peer;
-    if (getpeername(clientfd, (struct sockaddr *) &peer, &socksize)) {
-        die(421, LOG_ERR, MSG_GETPEERNAME ": %s" , strerror(errno));
+    if (accept_tcpproxy) {
+        peer = haproxy_client; 
+    } else {
+        socksize = (socklen_t) sizeof peer;
+        if (getpeername(clientfd, (struct sockaddr *) &peer, &socksize)) {
+            die(421, LOG_ERR, MSG_GETPEERNAME ": %s" , strerror(errno));
+         }
     }
     fourinsix(&peer);
     if (checkvalidaddr(&peer) == 0) {
@@ -5359,20 +5437,23 @@ static void accept_client(const int active_listen_fd) {
         return;
     }
     if (accept_tcpproxy) {
+        logfile(LOG_INFO, "tcp proxy mode enabled");
+
+        char haproxy_buffer[HAPROXY_BUFFER];
+        int res;
+        if (haproxy_readline(clientfd, haproxy_buffer, HAPROXY_BUFFER) < 0) {
+            logfile(LOG_INFO, "control socket tcpproxy read failed");
+            (void) close(clientfd);
+            clientfd = -1;
+            return;
+        }
         memset (&haproxy_client, 0, sizeof (haproxy_client));
         memset (&haproxy_server, 0, sizeof (haproxy_server));
 
-        logfile(LOG_INFO, "tcp proxy mode enabled");
-        if (sfgets() != 0) {
+        if (haproxy_parse(haproxy_buffer, &haproxy_client, &haproxy_server)) {
             (void) close(clientfd);
             clientfd = -1;
-            logfile(LOG_INFO, "unable to read tcp proxy protocol");
-            return;
-        }
-        if (haproxy_parse(cmd)) {
-            (void) close(clientfd);
-            clientfd = -1;
-            logfile(LOG_INFO, "unable to parse tcp proxy protocol");
+            logfile(LOG_INFO, "control socket tcpproxy parse failed");
             return;
          }
          sa = haproxy_client;
