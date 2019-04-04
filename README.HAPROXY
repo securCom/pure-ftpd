@@ -1,0 +1,40 @@
+       ----------------------- HAPROXY SUPPORT ------------------------
+
+When using the HAPROXY in front of the ftp server, the TCPPROXY V1 protocol is supported.
+The protocol specifcation is of the protocol is https://www.haproxy.org/download/1.8/doc/proxy-protocol.txt
+
+Support is compiled automaticly, no extra compile time arguments are needed.
+
+Support features
+
+  - real client ip address in logs
+  - real client ip address in auth methods
+  - haproxy public ip for passive mode, the force passive directive have still higher precedence
+
+       ----------------------- PURE-FTPD CONFIGURATION ------------------------
+
+To enable this feature run the pure-ftpd command with '-5', here is the example:
+
+    pure-ftpd -5
+
+In configuration file add line
+
+    TcpProxy yes
+
+       ----------------------- HAPROXY CONFIGURATION ------------------------
+
+    listen FTPV
+	    bind *:21 name FTP
+        bind *:30000-31000 name FTP_PASV
+        mode tcp
+        option tcplog
+        balance leastconn
+        option tcp-check
+        tcp-check connect port 21 send-proxy
+        tcp-check expect string 220
+        stick on src
+        stick-table type ip size 10240k expire 30m
+        server ftp01 192.168.1.110 check port 21 send-proxy
+        server ftp02 192.168.1.111 check port 21 send-proxy
+
+In real world scenario there could be several HAPROXY servers balanced by DNS.
