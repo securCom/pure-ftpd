@@ -24,7 +24,7 @@ In configuration file add line
        ----------------------- HAPROXY CONFIGURATION ------------------------
 
     listen FTPV
-	    bind *:21 name FTP
+        bind *:21 name FTP
         bind *:30000-31000 name FTP_PASV
         mode tcp
         option tcplog

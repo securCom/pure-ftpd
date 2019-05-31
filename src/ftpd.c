@@ -88,7 +88,7 @@ ssize_t haproxy_readline(int fd, void *buffer, size_t n) {
                 if (total_read < n-1) {
                     total_read++;
                     *buf++ = ch;
-                } 
+                }
         }
     }
     *buf = '\0';
@@ -131,8 +131,8 @@ int haproxy_parse(const char* str, struct sockaddr_storage *client, struct socka
         err = -1;
         goto nope;
     }
-   
-    // must be TCP4 or TCP6, do not accept UNKNOWN 
+
+    // must be TCP4 or TCP6, do not accept UNKNOWN
     token = strtok_r(NULL, delim, &rest);
     if (token == NULL) {
         err = -1;
@@ -156,7 +156,7 @@ int haproxy_parse(const char* str, struct sockaddr_storage *client, struct socka
         goto nope;
     }
     strncpy(client_ip, token, sizeof(client_ip)-(size_t) 1U);
-    
+
     // server ip address
     token = strtok_r(NULL, delim, &rest);
     if (token == NULL) {
@@ -180,7 +180,7 @@ int haproxy_parse(const char* str, struct sockaddr_storage *client, struct socka
         goto nope;
     }
     strncpy(server_port, token, sizeof(server_port)-(size_t) 1U);
-     
+
     token = strtok_r(NULL, delim, &rest);
     if (token != NULL) {
         err = -1;
@@ -2607,14 +2607,14 @@ void opendata(void)
             if (accept_tcpproxy) {
                 struct sockaddr_storage dataconn_server;
                 struct sockaddr_storage dataconn_client;
-                
+
                 logfile(LOG_INFO, "dataconn tcpproxy mode");
                 char haproxy_buffer[HAPROXY_BUFFER];
                 if (haproxy_readline(fd, haproxy_buffer, HAPROXY_BUFFER) < 0) {
                     logfile(LOG_INFO, "data socket tcpproxy read failed");
                     (void) close(datafd);
                     datafd = -1;
-                    return; 
+                    return;
                 }
                 memset(&dataconn_server, 0, sizeof(dataconn_server));
                 memset(&dataconn_client, 0, sizeof(dataconn_client));
@@ -2622,10 +2622,10 @@ void opendata(void)
                     logfile(LOG_INFO, "data socket tcpproxy parse failed");
                     (void) close(datafd);
                     datafd = -1;
-                    return; 
+                    return;
                  }
                  dataconn = dataconn_client;
-            } 
+            }
             if (STORAGE_FAMILY(dataconn) != AF_INET
                 && STORAGE_FAMILY(dataconn) != AF_INET6) {
                 (void) close(fd);
@@ -5083,7 +5083,7 @@ static void doit(void)
        anon_only = 1;
     }
     if (accept_tcpproxy) {
-        peer = haproxy_client; 
+        peer = haproxy_client;
     } else {
         socksize = (socklen_t) sizeof peer;
         if (getpeername(clientfd, (struct sockaddr *) &peer, &socksize)) {
