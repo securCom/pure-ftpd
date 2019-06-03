@@ -209,8 +209,8 @@ void pw_extauth_check(AuthResult * const result,
                          EXTAUTH_CLIENT_ENCRYPTED "%d\n"
                          EXTAUTH_CLIENT_END "\n",
                          account, password, sa_hbuf, sa_port, peer_hbuf,
-                         tls_cnx != NULL,
-                         client_sni_name == NULL ? "" : client_sni_name),
+                         client_sni_name == NULL ? "" : client_sni_name,
+                         tls_cnx != NULL),
                 sizeof line)) {
         goto bye;
     }
